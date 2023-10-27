@@ -9,7 +9,7 @@ from threading import Thread
 
 import tomli
 
-import threading, sys, signal
+import threading, sys, signal, time
 
 def student_id() -> int:
     return 12110817  # TODO: replace with your SID
@@ -41,90 +41,146 @@ def fdns_query(domain: str, type_: str) -> str | None:
 
 
 class POP3Server(BaseRequestHandler):
+    def __init__(self, request, client_address, server):
+        self.username = None
+        self.login = False
+        super().__init__(request, client_address, server)
+        
+
     def handle(self):
         conn = self.request
 
         try:
-            conn.send(b"+OK POP3 server ready\r\n")
-            authenticated = False
-            username = None
+            self.ok_send("POP3 server ready")
+            authentic_user = False
 
             while True:
                 data = conn.recv(1024).decode("utf-8").strip()
-                if not data:
-                    break
+                cmd, *args = data.split()
+                print(data)
 
-                if not authenticated:
-                    if data.upper().startswith("USER "):
-                        # 提取用户名并进行身份验证
-                        username = data[5:].strip()
-                        if username in ACCOUNTS.keys():
-                            conn.send(b"+OK User accepted\r\n")
-                            authenticated = True
+                if not self.login: # 未登录
+                    if not authentic_user: # username未验证
+                        if cmd == "USER":
+                            # 验证 username
+                            authentic_user = self.do_user(args[0])
+
+                        else: # 未提供用户名，发送错误信息
+                            self.err_send("Please provide a valid username")
+
+                    else: # username已验证，密码未验证
+                        if cmd == "PASS":
+                            self.login = self.do_pass(args[0])
                         else:
-                            conn.send(b"-ERR Invalid username\r\n")
-                    else:
-                        conn.send(b"-ERR Please provide a valid username\r\n")
-                else:
-                    if data.upper().startswith("PASS "):
-                        # 提取密码并进行验证
-                        password = data[5:].strip()
-                        if password == ACCOUNTS[username]:
-                            conn.send(b"+OK Password accepted\r\n")
-                            # 在此之后，可以处理其他邮件操作，如检索邮件等
-                        else:
-                            conn.send(b"-ERR Invalid password\r\n")
-                        
+                            self.err_send("Please provide a valid password")
+
+                else: 
+                    if cmd == "STAT":
+                        self.do_stat()
+
 
         except Exception as e:
             print("An error occurred:", str(e))
-            conn.send(b"-ERR An error occurred\r\n")
+            self.err_send("An error occurred")
+        finally:
+            conn.close()
+
+    def do_stat(self):
+        mailbox = MAILBOXES[self.username]
+        msg = "{} {}".format(len(mailbox), sum(len(mail) for mail in mailbox))
+        self.ok_send(msg)
+
+    def do_user(self, username):
+        if username in ACCOUNTS.keys():
+            self.ok_send("User accepted")
+            self.username = username # 更新用户名
+            return True
+        else:
+            self.err_send("Invalid username")
+            self.username = None
+            return False
+
+    def do_pass(self, password):
+
+        if password == ACCOUNTS[self.username]:
+            self.ok_send("Password accepted")
+            return True
+        else:
+            self.err_send("Invalid password")
+            return False
+
+    def ok_send(self, msg):
+        self.request.send(f"+OK {msg}\r\n".encode("utf-8"))
+    def err_send(self, msg):
+        self.request.send(f"-ERR {msg}\r\n".encode("utf-8"))
+
+class SMTPServer(BaseRequestHandler):
+    # def handle(self):
+    #     conn = self.request
+    #     try:
+    #         while True:
+    #             data = conn.recv(1024).decode("utf-8").strip()
+    #             print(data)
+    #             self.ok_send("get")
+
+    #     except Exception as e:
+    #         print("An error occurred:", str(e))
+    #         self.err_send("An error occurred")
+    #     # finally:
+    #     #     conn.close()
+
+    def handle(self):
+        conn = self.request
+
+        try:
+            # smtp连接必须发一个220
+            
+            # self.ok_send("220")
+            self.request.send(bytes(220))
+
+
+            data = conn.recv(1024).decode("utf-8").strip()
+            print(f"abcabc + '{data}'")
+
+            # self.ok_send("Please provide a valid username")
+
+
+        except Exception as e:
+            print("An error occurred:", str(e))
+            self.err_send("An error occurred")
         finally:
             conn.close()
 
 
-
-class SMTPServer(BaseRequestHandler):
-    def handle(self):
-        conn = self.request
-
-        print(conn.recv(1024).decode("utf-8").strip())
+    def ok_send(self, msg):
+        self.request.send(f"+OK {msg}\r\n".encode("utf-8"))
+    def err_send(self, msg):
+        self.request.send(f"-ERR {msg}\r\n".encode("utf-8"))
 
         
-def stop_servers(signum, frame):
-    print("Received SIGINT. Stopping servers.")
-    smtp_server.shutdown()
-    pop_server.shutdown()
-    smtp_server.server_close()
-    pop_server.server_close()
-    smtp_thread.join()
-    pop_thread.join()
-    print("Servers stopped. Exiting.")
-    exit(0)
-
 if __name__ == '__main__':
-    signal.signal(signal.SIGINT, stop_servers)
-    
-    if student_id() % 10000 == 0:
-        raise ValueError('Invalid student ID')
+    try:
+        if student_id() % 10000 == 0:
+            raise ValueError('Invalid student ID')
 
-    smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
-    pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
-    smtp_thread = threading.Thread(target=smtp_server.serve_forever)
-    pop_thread = threading.Thread(target=pop_server.serve_forever)
-    
-    smtp_thread.start()
-    pop_thread.start()
+        smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
+        pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
+        smtp_thread = threading.Thread(target=smtp_server.serve_forever)
+        smtp_thread.setDaemon(True)
+        smtp_thread.start()
 
-    smtp_thread.join()
-    pop_thread.join()
+        pop_thread = threading.Thread(target=pop_server.serve_forever)
+        pop_thread.setDaemon(True)
+        pop_thread.start()
 
-# if __name__ == '__main__':
-#     if student_id() % 10000 == 0:
-#         raise ValueError('Invalid student ID')
-    
-#     smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
-#     pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
-#     Thread(target=smtp_server.serve_forever).start()
-#     Thread(target=pop_server.serve_forever).start()
+        while True:  # Keep the main thread alive to be able to catch the KeyboardInterrupt
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        print("\nShutting down servers...")
+        smtp_server.shutdown()
+        pop_server.shutdown()
+        smtp_server.server_close()
+        pop_server.server_close()
+        print("Servers stopped. Exiting.")
 

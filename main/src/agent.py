@@ -5,6 +5,8 @@ from email.mime.text import MIMEText
 from poplib import POP3
 from smtplib import SMTP
 
+from imaplib import IMAP4
+
 import tomli
 
 parser = ArgumentParser()
@@ -31,19 +33,31 @@ def fdns_query(domain: str, type_: str) -> str | None:
 
 
 def smtp():
+    # to = []
+    # while True:
+    #     _to = input('To: ')
+    #     if _to == '':
+    #         break
+    #     to.append(_to)
+    # subject = input('Subject: ')
+    # content = input('Content: ')
+    # msg = MIMEText(content, 'plain', 'utf-8')
+    # msg['Subject'] = subject
+    # msg['From'] = args.email
+
+    # ! TEST
+    msg = MIMEText('fixed test', 'plain', 'utf-8')
+    msg['Subject'] = 'TEST'
+    msg['From'] = 'usr1@mail.sustech.edu.cn'
+    to = ['usr2@mail.sustech.edu.cn']
+    print(msg, to)
+    # ! TEST
+    SMTP.debuglevel = 1
     conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P')))
-    to = []
-    while True:
-        _to = input('To: ')
-        if _to == '':
-            break
-        to.append(_to)
-    subject = input('Subject: ')
-    content = input('Content: ')
-    msg = MIMEText(content, 'plain', 'utf-8')
-    msg['Subject'] = subject
-    msg['From'] = args.email
+
+    print("connecting")
     conn.sendmail(args.email, to, msg.as_string())
+
     conn.quit()
 
 
@@ -56,7 +70,7 @@ def pop():
         try:
             cmd = input('[pop]>>> ')
             if cmd == 'stat':
-                msg, bts = conn.stat()[0:2]
+                msg, bts = conn.stat()
                 print(f'{msg} messages ({bts} bytes)')
             elif cmd == 'list':
                 print(f'{conn.list()[1]}')
