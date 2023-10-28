@@ -9,7 +9,8 @@ from threading import Thread
 
 import tomli
 
-import threading, sys, signal, time
+import threading, re, time, base64
+from traceback import print_stack
 
 def student_id() -> int:
     return 12110817  # TODO: replace with your SID
@@ -44,6 +45,8 @@ class POP3Server(BaseRequestHandler):
     def __init__(self, request, client_address, server):
         self.username = None
         self.login = False
+        self.mailbox = None
+        self.predel = []
         super().__init__(request, client_address, server)
         
 
@@ -55,29 +58,43 @@ class POP3Server(BaseRequestHandler):
             authentic_user = False
 
             while True:
-                data = conn.recv(1024).decode("utf-8").strip()
-                cmd, *args = data.split()
-                print(data)
+                self.recv = conn.recv(1024)
+                data = self.recv.decode("utf-8").strip()
+                cmd = data[:4].upper()
+                arg = data[5:] if len(data) > 4 else None
 
                 if not self.login: # 未登录
                     if not authentic_user: # username未验证
                         if cmd == "USER":
                             # 验证 username
-                            authentic_user = self.do_user(args[0])
+                            authentic_user = self.do_user(arg)
 
                         else: # 未提供用户名，发送错误信息
                             self.err_send("Please provide a valid username")
 
                     else: # username已验证，密码未验证
                         if cmd == "PASS":
-                            self.login = self.do_pass(args[0])
+                            self.login = self.do_pass(arg)
                         else:
                             self.err_send("Please provide a valid password")
 
                 else: 
                     if cmd == "STAT":
                         self.do_stat()
-
+                    elif cmd == "LIST":
+                        self.do_list(arg)
+                    elif cmd == "RETR":
+                        self.do_retr(arg)
+                    elif cmd == "DELE":
+                        self.do_dele(arg)
+                    elif cmd == "RSET":
+                        self.do_rset()
+                    elif cmd == "NOOP":
+                        self.ok_send()
+                    elif cmd == "QUIT":
+                        self.do_quit()
+                        break
+                    
 
         except Exception as e:
             print("An error occurred:", str(e))
@@ -85,9 +102,37 @@ class POP3Server(BaseRequestHandler):
         finally:
             conn.close()
 
+    def do_dele(self, arg):
+        self.predel.append(int(arg) - 1)  # 预删除，注意index
+        self.ok_send()
+    
+    def do_rset(self):
+        self.predel.clear()
+        self.ok_send()
+
+    def do_quit(self):
+        # 清除邮件
+        # 需要这样删除，才能直接影响MAILBOXS
+        for idx in sorted(self.predel, reverse=True):
+            del self.mailbox[idx]
+        self.ok_send("Bye")
+        self.request.close()
+    
+    def do_list(self, which):
+        if which:
+            self.ok_send(f"{which} {len(self.mailbox[int(which) - 1])}")
+        else:
+            # self.ok_send([f"{i+1} {len(mail)}" for i, mail in enumerate(self.mailbox)])
+            msg = f"{len(self.mailbox)} messages\r\n" + \
+            "\r\n".join([f"{i + 1} {len(mail)}" for i, mail in enumerate(self.mailbox)]) + \
+            "\r\n."
+            self.ok_send(msg) # TODO
+    
+    def do_retr(self, which):
+        self.ok_send(self.mailbox[int(which) - 1])
+
     def do_stat(self):
-        mailbox = MAILBOXES[self.username]
-        msg = "{} {}".format(len(mailbox), sum(len(mail) for mail in mailbox))
+        msg = "{} {}".format(len(self.mailbox), sum(len(mail) for mail in self.mailbox))
         self.ok_send(msg)
 
     def do_user(self, username):
@@ -104,58 +149,66 @@ class POP3Server(BaseRequestHandler):
 
         if password == ACCOUNTS[self.username]:
             self.ok_send("Password accepted")
+            self.mailbox = MAILBOXES[self.username]
             return True
         else:
             self.err_send("Invalid password")
             return False
 
-    def ok_send(self, msg):
-        self.request.send(f"+OK {msg}\r\n".encode("utf-8"))
+    def ok_send(self, msg=""):
+        self.request.send(f"+OK {str(msg)}\r\n".encode("utf-8"))
     def err_send(self, msg):
-        self.request.send(f"-ERR {msg}\r\n".encode("utf-8"))
+        self.request.send(f"-ERR {str(msg)}\r\n".encode("utf-8"))
+
+
 
 class SMTPServer(BaseRequestHandler):
-    # def handle(self):
-    #     conn = self.request
-    #     try:
-    #         while True:
-    #             data = conn.recv(1024).decode("utf-8").strip()
-    #             print(data)
-    #             self.ok_send("get")
-
-    #     except Exception as e:
-    #         print("An error occurred:", str(e))
-    #         self.err_send("An error occurred")
-    #     # finally:
-    #     #     conn.close()
+    def __init__(self, request, client_address, server):
+        self.recv = None
+        super().__init__(request, client_address, server)
 
     def handle(self):
         conn = self.request
-
         try:
-            # smtp连接必须发一个220
-            
-            # self.ok_send("220")
-            self.request.send(bytes(220))
+            self.send(220, "SMTP server ready")
 
+            while True:
+                self.recv = conn.recv(1024)
+                data = self.recv.decode("utf-8").strip()
+                cmd = data[:4].upper()
+                arg = data[5:] if len(data) > 4 else None
 
-            data = conn.recv(1024).decode("utf-8").strip()
-            print(f"abcabc + '{data}'")
-
-            # self.ok_send("Please provide a valid username")
-
+                if cmd == "HELO" or cmd == "EHLO":
+                    self.send(250, "HELLO")
+                elif cmd == "MAIL":
+                    mail_from = re.search(r'<([^>]+)>', arg).group(1)
+                    self.send(250, "OK")
+                elif cmd == "RCPT":
+                    rcpt_to = re.search(r'<([^>]+)>', arg).group(1)
+                    self.send(250, "OK")
+                elif cmd == "DATA":
+                    self.send(354, "Start mail input: end with <CRLF>.<CRLF>")
+                    self.recv = conn.recv(1024)
+                    data = self.recv.decode("utf-8").strip()
+                    MAILBOXES[rcpt_to].append(data) # TODO 未校验
+                    self.send(250, "OK")
+                elif cmd == "QUIT":
+                    self.send(221, "Bye")
+                    break
 
         except Exception as e:
             print("An error occurred:", str(e))
-            self.err_send("An error occurred")
+            self.send(-1, "An error occurred")
         finally:
             conn.close()
+    
 
-
-    def ok_send(self, msg):
-        self.request.send(f"+OK {msg}\r\n".encode("utf-8"))
-    def err_send(self, msg):
-        self.request.send(f"-ERR {msg}\r\n".encode("utf-8"))
+    def send(self, code, msg):
+        # !!!!!!!!!!!!!!!!!!!!!!!一定要加CRLF CRLF CRLF CRLF CRLF CRLF 
+        self.request.send(f"{code} {msg}\r\n".encode("utf-8"))
+        print(f">>> Received: {self.recv}")
+        print(f">>> {code} {msg}")
+        print()
 
         
 if __name__ == '__main__':
@@ -166,11 +219,11 @@ if __name__ == '__main__':
         smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
         pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
         smtp_thread = threading.Thread(target=smtp_server.serve_forever)
-        smtp_thread.setDaemon(True)
+        smtp_thread.daemon = True
         smtp_thread.start()
 
         pop_thread = threading.Thread(target=pop_server.serve_forever)
-        pop_thread.setDaemon(True)
+        pop_thread.daemon = True
         pop_thread.start()
 
         while True:  # Keep the main thread alive to be able to catch the KeyboardInterrupt
