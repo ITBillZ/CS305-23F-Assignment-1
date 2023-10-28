@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from email.mime.text import MIMEText
 from poplib import POP3
-from smtplib import SMTP
+from smtplib import SMTP, SMTPSenderRefused, SMTPRecipientsRefused
 
 from imaplib import IMAP4
 
@@ -56,11 +56,18 @@ def smtp():
     # msg = MIMEText('fixed test', 'plain', 'utf-8')
     # msg['Subject'] = 'TEST'
     # msg['From'] = 'usr1@mail.sustech.edu.cn'
-    # to = ['usr2@mail.sustech.edu.cn']
-    # print(msg, to)
+    # to = ['usr1@gmail.com']
     # ! TEST
-    
-    conn.sendmail(args.email, to, msg.as_string())
+
+    # 发件失败退信功能
+    try:
+        conn.sendmail(args.email, to, msg.as_string())
+    except SMTPSenderRefused:
+        print(e)
+    except SMTPRecipientsRefused as e:
+        print(e)
+        conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P'))) # 需要再次连接
+        conn.sendmail(args.email, [args.email], msg.as_string())
     conn.quit()
 
 
@@ -99,7 +106,7 @@ def pop():
             conn.rset()
             raise
         except Exception as e:
-            print('-ERR!!')
+            print('-ERR')
             print(repr(e))
 
 
@@ -118,5 +125,5 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             break
         except Exception as e:
-            print('-ERR!!')
+            print('-ERR')
             print(repr(e))

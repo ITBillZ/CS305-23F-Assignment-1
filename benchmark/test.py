@@ -18,6 +18,7 @@ from timeout_decorator import timeout, TimeoutError
 import tomli
 import yaml
 import psutil
+import traceback
 
 ThreadingTCPServer.allow_reuse_address = True
 
@@ -148,6 +149,7 @@ def LOGIN(user: str, pass_: str):
     domain = user.split('@')[-1]
     pop3_server = CONFIG['agent'][domain]['pop']
     conn = POP3('localhost', int(fdns_query(pop3_server, 'P')))
+    # conn.getwelcome()
     conn.user(user)
     conn.pass_(pass_)
 
