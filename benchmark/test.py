@@ -45,6 +45,7 @@ class TestScenario:
     def __init__(self, filename: str):
         def to_runnable(server: dict[str, str]) -> sp.Popen:
             code = 'server.py' if server['type'] == 'student' else 'std_server.py'
+            # code = 'lsd.py' if server['type'] == 'student' else 'std_server.py'
             return sp.Popen(f'python3 {code} -n {server["domain"]}', shell=True,
                             stdout=sp.DEVNULL, stderr=sp.DEVNULL
                             )

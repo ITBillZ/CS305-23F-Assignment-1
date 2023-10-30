@@ -3,11 +3,11 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from email.mime.text import MIMEText
 from poplib import POP3
-from smtplib import SMTP, SMTPSenderRefused, SMTPRecipientsRefused
+from smtplib import SMTP, SMTPSenderRefused, SMTPRecipientsRefused, SMTPDataError
 
 from imaplib import IMAP4
 
-import tomli
+import tomli, datetime
 
 parser = ArgumentParser()
 parser.add_argument('--email', '-e', type=str, required=True)
@@ -40,40 +40,45 @@ def smtp():
     SMTP.debuglevel = 1
     conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P')))
 
-    to = []
-    while True:
-        _to = input('To: ')
-        if _to == '':
-            break
-        to.append(_to)
-    subject = input('Subject: ')
-    content = input('Content: ')
-    msg = MIMEText(content, 'plain', 'utf-8')
-    msg['Subject'] = subject
-    msg['From'] = args.email
+    # to = []
+    # while True:
+    #     _to = input('To: ')
+    #     if _to == '':
+    #         break
+    #     to.append(_to)
+    # subject = input('Subject: ')
+    # content = input('Content: ')
+    # msg = MIMEText(content, 'plain', 'utf-8')
+    # msg['Subject'] = subject
+    # msg['From'] = args.email
 
     # ! TEST
-    # msg = MIMEText('fixed test', 'plain', 'utf-8')
-    # msg['Subject'] = 'TEST'
-    # msg['From'] = 'usr1@mail.sustech.edu.cn'
-    # to = ['usr1@gmail.com']
+    msg = MIMEText('fixed test', 'plain', 'utf-8')
+    msg['Subject'] = 'TEST' + repr(datetime.datetime.now())
+    msg['From'] = 'usr1@mail.sustech.edu.cn'
+    to = ['err@gmail.com', 'usr2@mail.sustech.edu.cn']
     # ! TEST
 
     # 发件失败退信功能
+    # try:
+    #     conn.sendmail(args.email, to, msg.as_string())
+    # except SMTPSenderRefused:
+    #     print(e)
+    # except SMTPRecipientsRefused as e:
+    #     print(e)
+    #     conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P'))) # 需要再次连接
+    #     conn.sendmail(args.email, [args.email], msg.as_string())
     try:
         conn.sendmail(args.email, to, msg.as_string())
-    except SMTPSenderRefused:
-        print(e)
-    except SMTPRecipientsRefused as e:
-        print(e)
-        conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P'))) # 需要再次连接
-        conn.sendmail(args.email, [args.email], msg.as_string())
-    conn.quit()
+    except (SMTPSenderRefused, SMTPRecipientsRefused, SMTPDataError) as e:
+        print(f"agent: {repr(e)}")
+    finally:
+        conn.quit()
 
 
 def pop():
     conn = POP3('localhost', int(fdns_query(POP_SERVER, 'P')))
-    conn.set_debuglevel(2)
+    conn.set_debuglevel(1)
     print(conn.getwelcome())
     print(conn.user(args.email))
     print(conn.pass_(args.password))

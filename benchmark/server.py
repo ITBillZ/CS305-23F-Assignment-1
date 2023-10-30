@@ -13,7 +13,7 @@ import threading, re, time, base64
 from traceback import print_exc
 
 def student_id() -> int:
-    return 12110817  # TODO: replace with your SID
+    return 12110817
 
 
 parser = ArgumentParser()
@@ -39,6 +39,12 @@ ThreadingTCPServer.allow_reuse_address = True
 def fdns_query(domain: str, type_: str) -> str | None:
     domain = domain.rstrip('.') + '.'
     return FDNS[type_][domain]
+
+def addr2port(mail_addr: str) -> int | None:
+    addr_domain = mail_addr.split("@")[-1]
+    addr_server = fdns_query(addr_domain, "MX")
+    addr_port = int(fdns_query(addr_server, "P"))
+    return addr_port
 
 
 class POP3Server(BaseRequestHandler):
@@ -197,6 +203,8 @@ class SMTPServer(BaseRequestHandler):
 
     def handle(self):
         continue_loop = True
+        rcpt_to_list = []
+
         conn = self.request
         self.send(220, "SMTP server ready")
 
@@ -215,67 +223,71 @@ class SMTPServer(BaseRequestHandler):
                     self.forwarded = True
                 elif cmd == "MAIL":
                     mail_from = re.search(r'<([^>]+)>', arg).group(1)
-                    mail_from_domail = mail_from.split("@")[-1]
-
                     if self.forwarded or mail_from in ACCOUNTS:
                         # 被转发状态不检验，或者在ACCOUNTS里
                         self.send(250, "OK")
                     else:
-                        self.send(421, f"Sender refused: {mail_from}")
+                        self.send(550, f"Sender refused: {mail_from}")
 
                 elif cmd == "RCPT":
-                    rcpt_to = re.search(r'<([^>]+)>', arg).group(1)
-                    rcpt_domain = rcpt_to.split("@")[-1]
-
-                    if self.forwarded: # 这是被转发方server
-                        # 校验rcpt_to
-                        if rcpt_to not in ACCOUNTS:
-                            self.send(421, f"Recipient refused")
-                        else:
-                            self.send(250, "OK")
-                    
-                    else: # 发件服务器
-                        if mail_from_domail == rcpt_domain: # 非转发
-                            if rcpt_to not in ACCOUNTS:
-                                self.send(421, f"Recipient refused")
-                            else:
-                                self.send(250, "OK")
-                        else: # 转发
-                            self.forwarding = 1
-
-                            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            rcpt_domain = rcpt_to.split("@")[-1]
-                            rcpt_smtp_server = fdns_query(rcpt_domain, 'MX')
-                            rcpt_smtp_port = int(fdns_query(rcpt_smtp_server, 'P'))
-                            self.socket.connect(("", rcpt_smtp_port))
-                            self.socket.recv(1024)
-
-                            self.s_send(f"frwd {socket.gethostname()}")
-                            self.s_send(f"mail FROM:<{mail_from}>")
-                            code, _ = self.s_send(f"rcpt TO:<{rcpt_to}>")
-
-                            if code == 421:
-                                self.send(421, f"Recipient refused")
-                            else:
-                                self.send(250, "OK")
+                    rcpt_to_list.append(re.search(r'<([^>]+)>', arg).group(1))
+                    self.send(250, "OK")
 
                 elif cmd == "DATA":
                     self.send(354, "Start mail input: end with <CRLF>.<CRLF>")
                     self.recv = conn.recv(1024)
                     data = self.recv.decode("utf-8")
+                    # 上面已经接收了邮件的所有data
+                    err_rcpt_list = []
 
-                    if self.forwarded or not self.forwarding:
-                        # 被转发方 或 非转发状态 直接放入邮箱即可
-                        MAILBOXES[rcpt_to].append(data)
-                        self.send(250, "OK")
+                    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    for rcpt_to in rcpt_to_list:
+                        #   被转发方server     # (发件服务器)非转发，应该比较port而非domain
+                        if self.forwarded or SMTP_PORT == addr2port(rcpt_to):
+                            # 把无效的接收方加入err_rcpt_list
+                            if rcpt_to not in ACCOUNTS:
+                                err_rcpt_list.append(rcpt_to)
+                        
+                        else: # (发件服务器)转发
+                            # self.forwarding = 1
+
+
+                            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            self.socket.connect(("", addr2port(rcpt_to)))
+                            self.socket.recv(1024)
+
+                            self.s_send(f"frwd {socket.gethostname()}")
+                            self.s_send(f"mail FROM:<{mail_from}>")
+                            self.s_send(f"rcpt TO:<{rcpt_to}>")
+                            self.s_send("data")
+                            # msg格式：
+                            code, _ = self.s_send(data)
+
+                            if code == 550:
+                                err_rcpt_list.append(rcpt_to)
+                            
+                            self.s_send("quit")
+                            self.socket.close()
                     
-                    elif self.forwarding:
-                        self.s_send("data")
-                        self.s_send(data)
-                        self.s_send("quit")
+                    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    
+                    if len(err_rcpt_list) == len(rcpt_to_list):  # 所有收件人都不合法
+                        self.send(550, "All recipients are refused")
+                        # 发件服务器放入发件人邮箱
+                        if not self.forwarded:
+                            MAILBOXES[mail_from].append(data)
+
+                    else:  # 至少有一个收件人合法
+                        for rcpt_to in rcpt_to_list:
+                            if self.forwarded or (SMTP_PORT == addr2port(rcpt_to)):
+                                # 被转发方 或 非转发状态 直接放入邮箱即可
+                                    if rcpt_to not in err_rcpt_list:
+                                        MAILBOXES[rcpt_to].append(data)
 
                         self.send(250, "OK")
-
+                elif cmd == "RSET":
+                    self.send(250, "OK")
+                
                 elif cmd == "QUIT":
                     self.send(221, "Bye")
                     conn.close()
