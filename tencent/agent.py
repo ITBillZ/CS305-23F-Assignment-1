@@ -37,8 +37,8 @@ def fdns_query(domain: str, type_: str) -> str | None:
 
 
 def smtp():
-    # SMTP.debuglevel = 1
-    conn = SMTP('localhost', int(fdns_query(SMTP_SERVER, 'P')))
+    SMTP.debuglevel = 1
+    conn = SMTP(SMTP_SERVER, int(fdns_query(SMTP_SERVER, 'P')))
 
     to = []
     while True:
@@ -55,8 +55,8 @@ def smtp():
     # ! TEST
     # msg = MIMEText('fixed test', 'plain', 'utf-8')
     # msg['Subject'] = 'TEST' + repr(datetime.datetime.now())
-    # msg['From'] = 'usr1@mail.sustech.edu.cn'
-    # to = ['err@gmail.com', 'usr2@mail.sustech.edu.cn']
+    # msg['From'] = 'usr1@itbill.cn'
+    # to = ["usr2@itbill.cn"]
     # ! TEST
     try:
         conn.sendmail(args.email, to, msg.as_string())
@@ -67,8 +67,8 @@ def smtp():
 
 
 def pop():
-    conn = POP3('localhost', int(fdns_query(POP_SERVER, 'P')))
-    # conn.set_debuglevel(1)
+    conn = POP3(POP_SERVER, int(fdns_query(POP_SERVER, 'P')))
+    conn.set_debuglevel(1)
     print(conn.getwelcome())
     print(conn.user(args.email))
     print(conn.pass_(args.password))

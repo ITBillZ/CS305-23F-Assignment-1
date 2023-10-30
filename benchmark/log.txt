@@ -1,0 +1,83 @@
+Setup scenario: POP3 USER, PASS and QUIT
+TEST>>> Step: Login the account in different domain
+TEST>>> Step: quit
+Teardown scenario: POP3 USER, PASS and QUIT
+Setup scenario: Send an email to another user in the different domain and test LIST
+TEST>>> Step: Send email
+TEST>>> Step: wait
+TEST>>> Step: Login the account in different domain
+TEST>>> Step: List the email
+    >>> Expect: [{'mesg_num': 1}]
+    >>> Actual: [{'mesg_num': 1, 'octets': 171}]
+TEST>>> Step: quit
+Teardown scenario: Send an email to another user in the different domain and test LIST
+Setup scenario: Send an email to another user in the different domain and test STAT
+TEST>>> Step: Send email
+TEST>>> Step: wait
+TEST>>> Step: Login my account
+TEST>>> Step: Show the status
+    >>> Expect: [{'count': 1}]
+    >>> Actual: [{'count': 1, 'size': 171}]
+TEST>>> Step: quit
+Teardown scenario: Send an email to another user in the different domain and test STAT
+Setup scenario: Send an email to another user in the same domain and test RETR, DELE, RSET and NOOP
+TEST>>> Step: Send email
+TEST>>> Step: wait
+TEST>>> Step: Login the account in different domain
+TEST>>> Step: Retrieve the email
+    >>> Expect: {'from': 'usr1@mail.sustech.edu.cn', 'subject': 'Test Subject2'}
+    >>> Actual: {'from': 'usr1@mail.sustech.edu.cn', 'subject': 'Test Subject2'}
+TEST>>> Step: Delete the email
+    >>> Expect: {'resp': "b'+OK'"}
+    >>> Actual: {'resp': "b'+OK'"}
+TEST>>> Step: Reset the deletion
+    >>> Expect: {'resp': "b'+OK'"}
+    >>> Actual: {'resp': "b'+OK'"}
+TEST>>> Step: Cmd Noop
+    >>> Expect: {'resp': "b'+OK'"}
+    >>> Actual: {'resp': "b'+OK'"}
+TEST>>> Step: quit
+Teardown scenario: Send an email to another user in the same domain and test RETR, DELE, RSET and NOOP
+Setup scenario: Send an email to another user in the different domain and test LIST
+TEST>>> Step: Send email
+TEST>>> Step: wait
+TEST>>> Step: Login the account in different domain
+TEST>>> Step: List the email
+    >>> Expect: [{'mesg_num': 1}]
+    >>> Actual: [{'mesg_num': 1, 'octets': 171}]
+TEST>>> Step: quit
+Teardown scenario: Send an email to another user in the different domain and test LIST
+Setup scenario: Send an email to another user non-exist in different domain
+Teardown scenario: Send an email to another user non-exist in different domain
+Setup scenario: Send an email to another user from a non-existing email address
+Teardown scenario: Send an email to another user from a non-existing email address
+
+
+
+***** TEST SUMMARY *****
+StudentID: 12110817
+Score: 90/90
+PASSED: 5	PARTIALLY PASSED: 2
+
+***** TEST DETAILS *****
+[PASSED] POP3 USER, PASS and QUIT:
+	Credit: 15/15
+	Message: None
+[PASSED] Send an email to another user in the different domain and test LIST:
+	Credit: 5/5
+	Message: None
+[PASSED] Send an email to another user in the different domain and test STAT:
+	Credit: 5/5
+	Message: None
+[PASSED] Send an email to another user in the same domain and test RETR, DELE, RSET and NOOP:
+	Credit: 5/5
+	Message: None
+[PASSED] Send an email to another user in the different domain and test LIST:
+	Credit: 50/50
+	Message: None
+[PARTIALLY PASSED] Send an email to another user non-exist in different domain:
+	Credit: 5/5
+	Message: Raised error in step Send email: SMTPDataError -> 5 pts
+[PARTIALLY PASSED] Send an email to another user from a non-existing email address:
+	Credit: 5/5
+	Message: Raised error in step Send email: SMTPSenderRefused -> 5 pts

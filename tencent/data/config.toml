@@ -1,0 +1,10 @@
+[agent]
+"itbill.cn" = { smtp = "smtp.itbill.cn", pop = "pop.itbill.cn" }
+
+[server]
+"itbill.cn" = { smtp = 25, pop = 110 }
+
+[accounts."itbill.cn"]
+"usr1@itbill.cn" = "p1"
+"usr2@itbill.cn" = "p2"
+
